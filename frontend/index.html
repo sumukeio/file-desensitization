@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Mask | 面向大模型的智能文件自动脱敏中台</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 顶部导航栏 -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="logo-icon">🛡️</div>
+                <div class="brand-text">
+                    <h1>AI-Mask <span>文件安全脱敏站</span></h1>
+                    <p class="tagline">让 Excel 表格安全喂给 AI • 保护商业机密与个人隐私 • 保持数据逻辑完备</p>
+                </div>
+            </div>
+            <div class="header-badges">
+                <span class="badge badge-security clickable-badge" id="securityBadge" title="点击查看安全隐私保障说明">
+                    <span class="pulse-dot"></span> 零数据驻留 / 30分钟阅后即焚 ℹ️
+                </span>
+                <span class="badge badge-tech">Excel / CSV 专享版</span>
+            </div>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="app-main">
+            <!-- 策略选择卡片 -->
+            <section class="section-card">
+                <div class="section-header">
+                    <h2>1. 选择脱敏策略</h2>
+                    <span class="sub-tip">针对 AI 分析场景智能平衡“隐私安全”与“上下文理解度”</span>
+                </div>
+                <div class="profile-grid">
+                    <label class="profile-card active" data-profile="ai_friendly">
+                        <input type="radio" name="profile" value="ai_friendly" checked>
+                        <div class="card-content">
+                            <div class="card-title">
+                                <span class="icon">🌟</span>
+                                <strong>智能 AI 模式（喂给 AI 分析专用）</strong>
+                                <span class="tag-recommend">强烈推荐</span>
+                            </div>
+                            <p class="card-desc"><strong>“用代号换隐私，不耽误 AI 算账”</strong><br>
+                            把真实人名自动换成“运营_01”、店铺换成“店铺_A”、ASIN换成“商品_001”，多张表代号完全对应。销量、金额、毛利率原样保留。AI 算利润、做图表 100% 准确，不漏商业机密。</p>
+                        </div>
+                    </label>
+
+                    <label class="profile-card" data-profile="standard_mask">
+                        <input type="radio" name="profile" value="standard_mask">
+                        <div class="card-content">
+                            <div class="card-title">
+                                <span class="icon">🛡️</span>
+                                <strong>经典打星模式（对外发文件专用）</strong>
+                            </div>
+                            <p class="card-desc"><strong>“文字中间打星号，保留头尾看得懂”</strong><br>
+                            文字和编码中间自动打上星号（例如 <code>NERQWEQ</code> 变 <code>NE***EQ</code>，手机号变 <code>138****5678</code>）。表头和数字正常保留，适合发给外部合作方或跨部门传阅。</p>
+                        </div>
+                    </label>
+
+                    <label class="profile-card" data-profile="strict_anon">
+                        <input type="radio" name="profile" value="strict_anon">
+                        <div class="card-content">
+                            <div class="card-title">
+                                <span class="icon">🔒</span>
+                                <strong>绝密粉碎模式（极端保密专用）</strong>
+                            </div>
+                            <p class="card-desc"><strong>“所有文字全变乱码，彻底抹掉原始信息”</strong><br>
+                            除表头外，文字内容全部替换为随机乱码代号（如 <code>ANON_8392</code>），完全看不出任何原始字样，适合极高保密级别的测试或审计场景。</p>
+                        </div>
+                    </label>
+                </div>
+            </section>
+
+            <!-- 批量拖拽上传区 -->
+            <section class="section-card">
+                <div class="section-header">
+                    <h2>2. 上传文件</h2>
+                    <span class="sub-tip">支持多文件批量上传，系统将自动进入异步排队与按序脱敏</span>
+                </div>
+                
+                <div class="dropzone" id="dropzone">
+                    <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv" class="file-input-hidden">
+                    <div class="dropzone-content">
+                        <div class="upload-icon">📂</div>
+                        <h3>点击或将 Excel 文件拖拽到此处</h3>
+                        <p class="upload-hint">支持 <strong>.xlsx</strong>、<strong>.xls</strong>、<strong>.csv</strong> 格式 | 支持同时拖入多个文件 | 单文件上限 50MB</p>
+                        <button type="button" class="btn btn-primary" id="selectFilesBtn">选择文件</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 任务排队与处理看板 -->
+            <section class="section-card" id="queueSection">
+                <div class="section-header queue-header">
+                    <div>
+                        <h2>3. 文件处理队列与下载</h2>
+                        <span class="sub-tip" id="queueStatsSummary">当前队列：0 个文件</span>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn btn-outline" id="clearCompletedBtn" title="清理已完成任务并重置映射池">清空列表</button>
+                        <button class="btn btn-success" id="downloadAllBtn" disabled>
+                            <span>📦</span> 一键打包下载全部已完成 (ZIP)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="task-table">
+                        <thead>
+                            <tr>
+                                <th>文件名</th>
+                                <th>大小</th>
+                                <th>脱敏策略</th>
+                                <th>状态</th>
+                                <th>进度</th>
+                                <th>脱敏字段数</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="taskTableBody">
+                            <tr class="empty-row" id="emptyQueueRow">
+                                <td colspan="7">
+                                    <div class="empty-state">
+                                        <span class="empty-icon">☕</span>
+                                        <p>暂无待处理文件，请在上方上传 Excel 表格</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <!-- 页面底部 -->
+        <footer class="app-footer">
+            <p>AI-Mask 智能文件脱敏站 • 专为 Amazon 电商、仓储物流、生产与人事数据安全分析定制</p>
+        </footer>
+    </div>
+
+    <!-- Diff 对比预览弹窗 -->
+    <div class="modal-overlay" id="diffModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="icon">👁️</span>
+                    <h3 id="modalFileName">脱敏效果实时对比 (前 30 处样本)</h3>
+                </div>
+                <button class="modal-close-btn" id="closeModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="diff-summary-bar">
+                    <span>总脱敏修改数：<strong id="modalMaskedCount">0</strong> 处</span>
+                    <span class="badge badge-info">绿色为原始值，黄色高亮为安全处理值</span>
+                </div>
+                <div class="table-responsive modal-table-container">
+                    <table class="diff-table">
+                        <thead>
+                            <tr>
+                                <th>工作表 (Sheet)</th>
+                                <th>单元格坐标</th>
+                                <th>列名</th>
+                                <th>脱敏类型</th>
+                                <th>脱敏前原始值</th>
+                                <th>脱敏后安全值</th>
+                            </tr>
+                        </thead>
+                        <tbody id="diffTableBody">
+                            <!-- 动态加载 Diff 行 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="modalCloseActionBtn">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 零数据驻留 / 30分钟阅后即焚 Q&A 弹窗 -->
+    <div class="modal-overlay" id="securityModal">
+        <div class="modal-card modal-security-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="icon">🛡️</span>
+                    <h3>什么是“零数据驻留 / 30分钟阅后即焚”？</h3>
+                </div>
+                <button class="modal-close-btn" id="closeSecurityModalBtn">&times;</button>
+            </div>
+            <div class="modal-body security-modal-body">
+                <div class="qa-block">
+                    <div class="qa-q">
+                        <span class="qa-tag">Q</span>
+                        <strong>30分钟阅后即焚，是不是指平台最多保留上传的文件30分钟？</strong>
+                    </div>
+                    <div class="qa-a">
+                        <span class="qa-tag-a">A</span>
+                        <div>
+                            <p class="qa-highlight"><strong>是的，完全正确！具体包含双重安全销毁机制：</strong></p>
+                            
+                            <div class="qa-sub-item">
+                                <h4>1. ⏰ 自动兜底销毁（最多存留 30 分钟）</h4>
+                                <p>• <strong>覆盖范围</strong>：包含您上传的<strong>原始 Excel 表格</strong>与脱敏生成的<strong>脱敏后文件</strong>；</p>
+                                <p>• <strong>工作原理</strong>：系统后台具备自动化生命周期守护进程，从文件生成起自动计时。<strong>一旦存留超过 30 分钟（1800 秒），系统将强行物理抹除</strong>，彻底清空，防止服务器与本地磁盘产生任何隐私积累。</p>
+                            </div>
+
+                            <div class="qa-sub-item">
+                                <h4>2. ⚡ 手动即点即焚（处理完即刻销毁）</h4>
+                                <p>• 如果您下载完成后不想等待 30 分钟，可以直接在页面右上角点击 <strong>【清空列表】</strong>；</p>
+                                <p>• 后台会<strong>秒级物理删除</strong>所有临时文件并重置本次会话的假名池映射，做到<strong>用完即走、彻底清白</strong>。</p>
+                            </div>
+
+                            <div class="qa-sub-item">
+                                <h4>3. 💡 为什么设计为 30 分钟？</h4>
+                                <p>• 留出 30 分钟是为了让您有充足的时间从容点击 <strong>“效果对比”</strong> 和 <strong>“下载文件”</strong>；只要超时无人认领，平台就会将其视为过期垃圾自动彻底销毁，<strong>不存数据库、不记录明文日志</strong>。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="securityModalConfirmBtn">我知道了，安全放心</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
