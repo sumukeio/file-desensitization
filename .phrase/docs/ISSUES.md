@@ -10,6 +10,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | [`issue001`](#issue001--本地访问-8000-返回-detailnot-found) | 2026-09-14 | `phase-structure-options-and-whats-new-20260914` | P1 阻塞本地使用 | 本地打开 `http://127.0.0.1:8000` 只显示 `{"detail":"Not Found"}` | ✅ 已闭环 | 见下方详情；`run.py` / `启动工具站.bat` 增加端口冲突检测与自动换端口 |
 | [`issue002`](#issue002--效果对比后半-sheet-无数据--弹窗信息过载) | 2026-09-14 | RFC004 | P1 体验/正确性 | 多 Sheet 勾选结构脱敏后，从第 6 个 Sheet 起 Diff 无数据；顶部改名列表过长 | ✅ 已闭环 | 每 Sheet 结构≤5、数据≤5；顶部改名改为一句摘要；Tab 横向滚动 |
+| [`issue003`](#issue003--服务器-git-报-dubious-ownership) | 2026-09-14 | 宝塔部署 / Git 拉取 | P2 阻塞服务器 pull | `fatal: detected dubious ownership in repository` | ✅ 已闭环 | `git config --global --add safe.directory <项目路径>`；可选修正目录属主 |
 
 ---
 
@@ -104,3 +105,69 @@ RFC004 初版采样器：结构样本不限量 + 全局硬上限 100。
 ### 状态
 
 ✅ **已闭环**（2026-09-14）
+
+---
+
+## issue003 — 服务器 Git 报 `dubious ownership`
+
+### 现象
+
+在宝塔服务器项目目录执行 `git remote` / `git pull` 等命令时：
+
+```text
+fatal: detected dubious ownership in repository at '/www/wwwroot/file-desensitization'
+To add an exception for this directory, call:
+
+        git config --global --add safe.directory /www/wwwroot/file-desensitization
+```
+
+### 根因
+
+Git 2.35.2+ 的安全策略：若**仓库目录属主**与**当前执行 git 的用户**不一致，默认拒绝操作，防止误用他人可控目录。
+
+常见场景：目录属主是 `www`（或首次手动上传时的用户），你却用 `root` 在 SSH 里操作 git。
+
+### 解决方案
+
+**立刻解除拦截（推荐先做）：**
+
+```bash
+git config --global --add safe.directory /www/wwwroot/file-desensitization
+```
+
+然后再执行 `git remote add` / `git pull` 等。
+
+**可选加固（减少以后再踩坑）：**
+
+```bash
+# 按宝塔实际运行用户调整，常见 www
+chown -R www:www /www/wwwroot/file-desensitization
+```
+
+若服务用 `www`、日常用 `root` 管代码：每次 root 操作前保留 `safe.directory` 即可；或 `su - www` 后再 `git pull`。
+
+### 关联文档
+
+服务器从「手动上传」改为「Git pull」的完整步骤见  
+[`docs/DEPLOYMENT_GUIDE.md` §3.4](../../docs/DEPLOYMENT_GUIDE.md)。
+
+### 状态
+
+✅ **已闭环**（2026-09-14）：根因与处理命令落盘。
+
+### 续：首次接上 Gitee 后的正常状态（已验证）
+
+服务器执行 `safe.directory` → `remote add gitee` → `fetch` → `checkout -f main` 后：
+
+```text
+位于分支 main
+您的分支与上游分支 'gitee/main' 一致。
+
+未跟踪的文件:
+        <哈希>_venv/
+```
+
+**解读**：代码已与 Gitee `main` 对齐，流程成功。  
+`<哈希>_venv/` 是宝塔 Python 项目管理器自动创建的虚拟环境，**应保留、不要 `git add`**。仓库 `.gitignore` 已增加 `*_venv/` 忽略规则。
+
+后续日常：`git pull gitee main` → 必要时重装依赖 → 宝塔重启项目。

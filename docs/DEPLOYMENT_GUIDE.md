@@ -13,6 +13,7 @@
   - [3.1 方式 A：宝塔“Python 项目管理器”一键部署（推荐）](#31-方式-a宝塔python-项目管理器一键部署推荐)
   - [3.2 关键配置：Nginx 反向代理与大文件上传限制](#32-关键配置nginx-反向代理与大文件上传限制)
   - [3.3 方式 B：Docker 容器化部署（备选）](#33-方式-bdocker-容器化部署备选)
+  - [3.4 从手动上传改为 Git pull 更新（推荐）](#34-从手动上传改为-git-pull-更新推荐)
 - [四、 内网自动化运维与沙箱定时清理](#四-内网自动化运维与沙箱定时清理)
 - [五、 常见问题排查 (FAQ)](#五-常见问题排查-faq)
 
@@ -181,6 +182,79 @@ docker run -d --name file-desensitize-app \
 
 ---
 
+### 3.4 从手动上传改为 Git pull 更新（推荐）
+
+早期若用宝塔「整包上传」部署，后续应改为 **Git 拉取**，避免每次覆盖目录。  
+**不要**先 `rm -rf` 删光项目再 pull：容易误删 `.venv`、运行时 `temp/`、以及与宝塔项目绑定相关的本地状态。
+
+#### 代码托管（双远程）
+
+| 远程 | 用途 | 示例 |
+| :--- | :--- | :--- |
+| GitHub `origin` | 主备份 / 协作 | `https://github.com/sumukeio/file-desensitization.git` |
+| Gitee `gitee` | 内网服务器拉取更稳 | `https://gitee.com/jiangchenghan/file-desensitization.git` |
+
+本机开发机推送示例：
+
+```powershell
+cd "E:\AIProject\File Desensitization"
+git push origin main
+git remote add gitee https://gitee.com/jiangchenghan/file-desensitization.git   # 仅首次
+git push gitee main
+```
+
+服务器建议日常只跟 **Gitee**（或你内网可达的那一个）。
+
+#### 首次：把已有目录接上 Git（不停删目录）
+
+```bash
+# 1. 宝塔 Python 项目管理器：先【停止】该项目
+
+# 2. 可选备份
+cp -a /www/wwwroot/file-desensitization /www/wwwroot/file-desensitization.bak.$(date +%Y%m%d)
+
+# 3. 进入目录
+cd /www/wwwroot/file-desensitization
+
+# 4. 若遇 dubious ownership（目录属主 ≠ 当前用户），先放行：
+git config --global --add safe.directory /www/wwwroot/file-desensitization
+
+# 5. 若还没有 .git，初始化并拉取（二选一远程）
+git init
+git remote add gitee https://gitee.com/jiangchenghan/file-desensitization.git
+# 或：git remote add origin https://github.com/sumukeio/file-desensitization.git
+
+git fetch gitee
+git checkout -f main
+# 若本地已有杂乱文件冲突，可用：
+# git reset --hard gitee/main
+
+# 6. 依赖（有 venv 则先 activate；或在宝塔【模块】里从 requirements.txt 安装）
+pip install -r requirements.txt
+# 兼容旧路径：pip install -r backend/requirements.txt
+
+# 7. 宝塔：再【启动】/【重启】项目
+```
+
+**说明**：`git status` 若出现未跟踪的 `xxxx_venv/`，属于宝塔自动创建的虚拟环境，**正常且应保留**，不要加入 Git。仓库已用 `*_venv/` 忽略。
+
+若目录极度混乱、宁肯重来：停服务 → 旧目录改名为 `file-desensitization_old` → `git clone` 到原路径 → 按需拷回 `.venv`/`*_venv` 或重装依赖 → 启动。  
+**仍不建议**在原目录内 `rm -rf *`。
+
+#### 日常更新
+
+```bash
+# 停服务（建议）→ pull → 必要时装依赖 → 启服务
+cd /www/wwwroot/file-desensitization
+git pull gitee main
+pip install -r requirements.txt   # 仅当 requirements 有变更时需要
+# 宝塔：重启项目
+```
+
+`dubious ownership` 详情见 [`.phrase/docs/ISSUES.md` → issue003](file:///e:/AIProject/File%20Desensitization/.phrase/docs/ISSUES.md)。
+
+---
+
 ## 四、 内网自动化运维与沙箱定时清理
 
 虽然系统内置了 **“30分钟阅后即焚守护线程”**，为了给服务器磁盘双重保险，建议在宝塔面板配置一条每日计划任务：
@@ -224,3 +298,16 @@ echo "脱敏临时沙箱清理完成: $(date)"
   2. 或换端口：`set AIMASK_PORT=8001` 再执行 `python run.py`；
   3. 推荐直接使用项目根目录的 `python run.py` / `启动工具站.bat`（已内置端口占用检测与自动换端口，请以控制台打印的地址为准）。
 - **详细复盘**：见 [`.phrase/docs/ISSUES.md` → issue001](file:///e:/AIProject/File%20Desensitization/.phrase/docs/ISSUES.md)。
+
+### Q5: 服务器执行 git 报 `fatal: detected dubious ownership`？
+- **原因**：项目目录属主与当前 SSH 用户不一致（常见：目录属 `www`，你用 `root` 操作）。
+- **立刻处理**：
+  ```bash
+  git config --global --add safe.directory /www/wwwroot/file-desensitization
+  ```
+- **可选**：`chown -R www:www /www/wwwroot/file-desensitization`（按实际运行用户调整）。
+- **详细**：见 [issue003](file:///e:/AIProject/File%20Desensitization/.phrase/docs/ISSUES.md) 与上文 [§3.4](#34-从手动上传改为-git-pull-更新推荐)。
+
+### Q6: 服务器更新要不要先删掉文件夹再 pull？
+- **不要整目录清空。** 保留 `.venv` / `temp` 等，用 `git pull`（或首次 `git init` + `fetch` + `checkout`/`reset --hard`）即可。
+- 步骤见 [§3.4](#34-从手动上传改为-git-pull-更新推荐)。

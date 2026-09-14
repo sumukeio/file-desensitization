@@ -4,6 +4,14 @@
 
 ---
 
+## [2026-09-14] - 文档：服务器 Git 部署与 dubious ownership
+
+### 文档
+- **`[issue003]`** 登记服务器 `dubious ownership` 根因与 `safe.directory` 解法。
+- **`[部署]`** [`docs/DEPLOYMENT_GUIDE.md`](file:///e:/AIProject/File%20Desensitization/docs/DEPLOYMENT_GUIDE.md) 新增 §3.4：从手动上传改为 Git pull（GitHub + Gitee）；FAQ Q5/Q6。
+
+---
+
 ## [2026-09-14] - issue002：效果对比采样与弹窗信息架构修订
 
 ### 修复 / 增强

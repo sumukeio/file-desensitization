@@ -55,6 +55,8 @@ env/
 ENV/
 env.bak/
 venv.bak/
+*_venv/          # 宝塔 Python 项目管理器生成的哈希名虚拟环境（如 cada98b..._venv/）
+
 
 # 单元测试与覆盖率报告缓存
 .pytest_cache/
