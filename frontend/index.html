@@ -21,6 +21,10 @@
                 </div>
             </div>
             <div class="header-badges">
+                <span class="badge badge-whats-new clickable-badge" id="whatsNewBadge" title="查看最近更新">
+                    <span class="unread-dot" id="whatsNewUnreadDot" aria-hidden="true"></span>
+                    ✨ 最近更新
+                </span>
                 <span class="badge badge-security clickable-badge" id="securityBadge" title="点击查看安全隐私保障说明">
                     <span class="pulse-dot"></span> 零数据驻留 / 30分钟阅后即焚 ℹ️
                 </span>
@@ -81,6 +85,49 @@
                 <div class="section-header">
                     <h2>2. 上传文件</h2>
                     <span class="sub-tip">支持多文件批量上传，系统将自动进入异步排队与按序脱敏</span>
+                </div>
+
+                <div class="structure-options" id="headerRowOptions">
+                    <p class="structure-options-title">表头位置</p>
+                    <p class="structure-options-hint">
+                        默认会<strong>自动识别</strong>，且<strong>每个工作表单独判断</strong>
+                       （例如有的表头在第 1 行，有的在第 3 行，都能分别处理）。
+                        处理完成后可在「效果对比」里查看识别结果。
+                        「手动指定」会把同一行号套用到本文件<strong>全部工作表</strong>，只适合所有表结构一致的情况。
+                    </p>
+                    <div class="header-row-controls">
+                        <label class="header-row-choice">
+                            <input type="radio" name="headerRowMode" value="auto" id="headerRowModeAuto" checked>
+                            <span>自动识别表头（推荐）</span>
+                        </label>
+                        <label class="header-row-choice">
+                            <input type="radio" name="headerRowMode" value="manual" id="headerRowModeManual">
+                            <span>手动指定表头在第</span>
+                            <input type="number" id="headerRowInput" class="header-row-input" min="1" max="100" value="3" disabled>
+                            <span>行</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="structure-options" id="structureOptions">
+                    <p class="structure-options-title">可选：是否连表结构一起脱敏</p>
+                    <p class="structure-options-hint">默认只处理表格里的内容，列名和工作表名称会原样保留。若它们本身含敏感信息，可勾选下方选项。</p>
+                    <div class="structure-options-grid">
+                        <label class="structure-option">
+                            <input type="checkbox" id="maskHeaders" name="mask_headers">
+                            <span class="option-label">
+                                <strong>对列名（表头）脱敏</strong>
+                                <small>勾选后，识别出的表头行也会一起处理。AI 更难看懂每列是什么意思，建议只在列名含店铺名、人名等敏感词时使用。</small>
+                            </span>
+                        </label>
+                        <label class="structure-option">
+                            <input type="checkbox" id="maskSheetNames" name="mask_sheet_names">
+                            <span class="option-label">
+                                <strong>对工作表名称（Sheet 名）脱敏</strong>
+                                <small>勾选后，Excel 底部的工作表标签名称也会一起处理。</small>
+                            </span>
+                        </label>
+                    </div>
                 </div>
                 
                 <div class="dropzone" id="dropzone">
@@ -149,7 +196,7 @@
             <div class="modal-header">
                 <div class="modal-title">
                     <span class="icon">👁️</span>
-                    <h3 id="modalFileName">脱敏效果实时对比 (前 30 处样本)</h3>
+                    <h3 id="modalFileName">脱敏效果对比</h3>
                 </div>
                 <button class="modal-close-btn" id="closeModalBtn">&times;</button>
             </div>
@@ -158,22 +205,43 @@
                     <span>总脱敏修改数：<strong id="modalMaskedCount">0</strong> 处</span>
                     <span class="badge badge-info">绿色为原始值，黄色高亮为安全处理值</span>
                 </div>
-                <div class="table-responsive modal-table-container">
-                    <table class="diff-table">
-                        <thead>
-                            <tr>
-                                <th>工作表 (Sheet)</th>
-                                <th>单元格坐标</th>
-                                <th>列名</th>
-                                <th>脱敏类型</th>
-                                <th>脱敏前原始值</th>
-                                <th>脱敏后安全值</th>
-                            </tr>
-                        </thead>
-                        <tbody id="diffTableBody">
-                            <!-- 动态加载 Diff 行 -->
-                        </tbody>
-                    </table>
+                <div class="sheet-renames-summary" id="sheetRenamesSummary"></div>
+                <div class="diff-sheet-tabs" id="diffSheetTabs"></div>
+                <div class="diff-sheet-panel" id="diffSheetPanel">
+                    <div class="diff-sheet-meta" id="diffSheetMeta"></div>
+                    <div class="diff-section" id="diffStructureSection">
+                        <h4 class="diff-section-title">列名 / 工作表结构变更（最多 5 条）</h4>
+                        <div class="table-responsive modal-table-container">
+                            <table class="diff-table">
+                                <thead>
+                                    <tr>
+                                        <th>位置</th>
+                                        <th>脱敏类型</th>
+                                        <th>脱敏前原始值</th>
+                                        <th>脱敏后安全值</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="diffStructureBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="diff-section" id="diffDataSection">
+                        <h4 class="diff-section-title">数据单元格变更（最多 5 条）</h4>
+                        <div class="table-responsive modal-table-container">
+                            <table class="diff-table">
+                                <thead>
+                                    <tr>
+                                        <th>单元格坐标</th>
+                                        <th>列名</th>
+                                        <th>脱敏类型</th>
+                                        <th>脱敏前原始值</th>
+                                        <th>脱敏后安全值</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="diffDataBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -229,6 +297,27 @@
         </div>
     </div>
 
+    <!-- 最近更新弹窗 -->
+    <div class="modal-overlay" id="whatsNewModal">
+        <div class="modal-card modal-whats-new-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="icon">✨</span>
+                    <h3>最近更新</h3>
+                </div>
+                <button class="modal-close-btn" id="closeWhatsNewModalBtn" type="button">&times;</button>
+            </div>
+            <div class="modal-body whats-new-body">
+                <p class="whats-new-intro">这里记录每次上线后，您能在页面上直接感受到的变化。</p>
+                <div id="whatsNewTimeline" class="whats-new-timeline"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="whatsNewConfirmBtn" type="button">我知道了</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/whats-new.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

@@ -14,6 +14,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const queueStatsSummary = document.getElementById('queueStatsSummary');
     const downloadAllBtn = document.getElementById('downloadAllBtn');
     const clearCompletedBtn = document.getElementById('clearCompletedBtn');
+    const maskHeadersCheckbox = document.getElementById('maskHeaders');
+    const maskSheetNamesCheckbox = document.getElementById('maskSheetNames');
+    const headerRowModeAuto = document.getElementById('headerRowModeAuto');
+    const headerRowModeManual = document.getElementById('headerRowModeManual');
+    const headerRowInput = document.getElementById('headerRowInput');
 
     // Diff 模态框元素
     const diffModal = document.getElementById('diffModal');
@@ -21,7 +26,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalCloseActionBtn = document.getElementById('modalCloseActionBtn');
     const modalFileName = document.getElementById('modalFileName');
     const modalMaskedCount = document.getElementById('modalMaskedCount');
-    const diffTableBody = document.getElementById('diffTableBody');
+    const sheetRenamesSummary = document.getElementById('sheetRenamesSummary');
+    const diffSheetTabs = document.getElementById('diffSheetTabs');
+    const diffSheetMeta = document.getElementById('diffSheetMeta');
+    const diffStructureSection = document.getElementById('diffStructureSection');
+    const diffStructureBody = document.getElementById('diffStructureBody');
+    const diffDataSection = document.getElementById('diffDataSection');
+    const diffDataBody = document.getElementById('diffDataBody');
+    let currentDiffPayload = null;
+    let currentDiffTaskId = null;
+    let activeDiffSheet = null;
+
+    // 表头位置：自动 / 手动
+    function syncHeaderRowInputState() {
+        if (!headerRowInput || !headerRowModeManual) return;
+        headerRowInput.disabled = !headerRowModeManual.checked;
+    }
+    if (headerRowModeAuto && headerRowModeManual) {
+        headerRowModeAuto.addEventListener('change', syncHeaderRowInputState);
+        headerRowModeManual.addEventListener('change', syncHeaderRowInputState);
+        syncHeaderRowInputState();
+    }
 
     // 1. 策略选择卡片交互
     profileCards.forEach(card => {
@@ -81,6 +106,13 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleFileUpload(files) {
         const formData = new FormData();
         formData.append('profile', currentProfile);
+        formData.append('mask_headers', maskHeadersCheckbox && maskHeadersCheckbox.checked ? 'true' : 'false');
+        formData.append('mask_sheet_names', maskSheetNamesCheckbox && maskSheetNamesCheckbox.checked ? 'true' : 'false');
+        const headerMode = headerRowModeManual && headerRowModeManual.checked ? 'manual' : 'auto';
+        formData.append('header_row_mode', headerMode);
+        if (headerMode === 'manual' && headerRowInput) {
+            formData.append('header_row', String(headerRowInput.value || '1'));
+        }
         let validFileCount = 0;
 
         for (let i = 0; i < files.length; i++) {
@@ -182,10 +214,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 actionsHtml = `<span style="color:var(--danger); font-size:12px;" title="${task.error_message || '未知错误'}">处理失败</span>`;
             }
 
+            const structureTag = formatStructureOptions(task);
+            const headerHint = formatHeaderRowsHint(task);
+
             tr.innerHTML = `
-                <td><strong>${escapeHtml(task.file_name)}</strong></td>
+                <td>
+                    <strong>${escapeHtml(task.file_name)}</strong>
+                    ${headerHint}
+                </td>
                 <td>${formatBytes(task.file_size)}</td>
-                <td><span style="font-size:12px; color:var(--text-secondary);">${profileLabel}</span></td>
+                <td>
+                    <span style="font-size:12px; color:var(--text-secondary);">${profileLabel}</span>
+                    ${structureTag}
+                </td>
                 <td>${statusBadge}</td>
                 <td>${progressHtml}</td>
                 <td><strong>${task.masked_count}</strong> 处</td>
@@ -227,7 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isPolling = false;
     }
 
-    // 5. Diff 模态框展示
+    // 5. Diff 模态框展示（分 Sheet Tab + 结构脱敏可见）
     async function openDiffModal(taskId) {
         try {
             const resp = await fetch(`/api/tasks/${taskId}/diff`);
@@ -236,33 +277,214 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const data = await resp.json();
+            currentDiffPayload = data;
+            currentDiffTaskId = data.task_id || taskId;
             modalFileName.textContent = `脱敏效果对比 — ${data.file_name}`;
             modalMaskedCount.textContent = data.masked_count;
-
-            diffTableBody.innerHTML = '';
-            const samples = data.diff_samples || [];
-
-            if (samples.length === 0) {
-                diffTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">该文件未检测到需要修改的敏感内容</td></tr>`;
-            } else {
-                samples.forEach(s => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${escapeHtml(s.sheet || 'Sheet1')}</td>
-                        <td><code>R${s.row}C${s.col}</code></td>
-                        <td><strong>${escapeHtml(s.col_name || '')}</strong></td>
-                        <td><span class="status-pill status-processing">${escapeHtml(s.mask_type || 'MASK')}</span></td>
-                        <td><span class="diff-raw">${escapeHtml(s.original || '')}</span></td>
-                        <td><span class="diff-masked">${escapeHtml(s.desensitized || '')}</span></td>
-                    `;
-                    diffTableBody.appendChild(row);
-                });
-            }
-
+            renderSheetRenamesSummary(data);
+            renderDiffSheetTabs(data);
             diffModal.classList.add('show');
         } catch (err) {
             console.error('打开 Diff 弹窗失败:', err);
         }
+    }
+
+    function getDiffSheetList(data) {
+        const names = new Set(Object.keys(data.header_rows || {}));
+        (data.diff_samples || []).forEach(s => {
+            if (s.sheet) names.add(s.sheet);
+        });
+        return Array.from(names);
+    }
+
+    function renderSheetRenamesSummary(data) {
+        if (!sheetRenamesSummary) return;
+        const renames = data.sheet_renames || {};
+        const count = Object.keys(renames).length;
+        if (count === 0) {
+            sheetRenamesSummary.classList.remove('show');
+            sheetRenamesSummary.innerHTML = '';
+            return;
+        }
+        sheetRenamesSummary.innerHTML = `已将 <strong>${count}</strong> 个工作表重命名（切换上方标签可看「原名 → 新名」）`;
+        sheetRenamesSummary.classList.add('show');
+    }
+
+    function renderDiffSheetTabs(data) {
+        if (!diffSheetTabs) return;
+        const sheets = getDiffSheetList(data);
+        diffSheetTabs.innerHTML = '';
+        if (sheets.length === 0) {
+            renderDiffSheetPanel(data, null);
+            return;
+        }
+        sheets.forEach((sheetName, idx) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'diff-sheet-tab' + (idx === 0 ? ' active' : '');
+            const renamed = (data.sheet_renames || {})[sheetName];
+            btn.innerHTML = renamed
+                ? `${escapeHtml(sheetName)} <span class="tab-sub">→ ${escapeHtml(renamed)}</span>`
+                : escapeHtml(sheetName);
+            btn.title = renamed ? `${sheetName} → ${renamed}` : sheetName;
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.diff-sheet-tab').forEach(el => el.classList.remove('active'));
+                btn.classList.add('active');
+                renderDiffSheetPanel(data, sheetName);
+                btn.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+            });
+            diffSheetTabs.appendChild(btn);
+        });
+        renderDiffSheetPanel(data, sheets[0]);
+    }
+
+    function renderDiffSheetPanel(data, sheetName) {
+        activeDiffSheet = sheetName;
+        if (!diffSheetMeta || !diffStructureBody || !diffDataBody) return;
+
+        if (!sheetName) {
+            diffSheetMeta.textContent = '未识别到可展示的工作表。';
+            diffStructureBody.innerHTML = '';
+            diffDataBody.innerHTML = '';
+            return;
+        }
+
+        const headerRow = (data.header_rows || {})[sheetName];
+        const overrides = data.header_row_overrides || {};
+        const isOverridden = Object.prototype.hasOwnProperty.call(overrides, sheetName);
+        let modeText = '自动识别';
+        if (isOverridden) {
+            modeText = '本工作表已手动纠错';
+        } else if (data.header_row_mode === 'manual') {
+            modeText = `手动指定（统一第 ${data.header_row || '?'} 行）`;
+        }
+
+        const defaultInput = isOverridden ? overrides[sheetName] : (headerRow || 1);
+        diffSheetMeta.innerHTML = `
+            <div class="diff-sheet-meta-line">
+                ${headerRow
+                    ? `本工作表表头识别为<strong>第 ${headerRow} 行</strong>（${modeText}）`
+                    : `本工作表：${escapeHtml(sheetName)}`}
+            </div>
+            <div class="header-override-bar">
+                <label>若识别不准，仅改本工作表为第
+                    <input type="number" class="header-override-input" id="headerOverrideInput" min="1" max="100" value="${defaultInput}">
+                    行
+                </label>
+                <button type="button" class="btn btn-secondary btn-sm" id="headerOverrideBtn">按此行重跑</button>
+                ${isOverridden ? '<button type="button" class="btn btn-ghost btn-sm" id="headerOverrideClearBtn">恢复自动识别</button>' : ''}
+            </div>
+            <div class="header-override-hint">其它工作表不受影响；将复用原文件重新脱敏。</div>
+        `;
+
+        const overrideBtn = document.getElementById('headerOverrideBtn');
+        const clearBtn = document.getElementById('headerOverrideClearBtn');
+        const overrideInput = document.getElementById('headerOverrideInput');
+        if (overrideBtn && overrideInput) {
+            overrideBtn.addEventListener('click', () => {
+                submitHeaderOverride(sheetName, overrideInput.value, false);
+            });
+        }
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                submitHeaderOverride(sheetName, '', true);
+            });
+        }
+
+        const samples = (data.diff_samples || []).filter(s => s.sheet === sheetName);
+        const structureSamples = samples.filter(s => s.mask_type === 'HEADER' || s.mask_type === 'SHEET');
+        const dataSamples = samples.filter(s => s.mask_type !== 'HEADER' && s.mask_type !== 'SHEET');
+
+        if (structureSamples.length === 0) {
+            diffStructureSection.style.display = 'none';
+            diffStructureBody.innerHTML = '';
+        } else {
+            diffStructureSection.style.display = 'block';
+            diffStructureBody.innerHTML = structureSamples.map(s => {
+                const pos = s.mask_type === 'SHEET'
+                    ? '工作表名称'
+                    : `<code>R${s.row}C${s.col}</code>`;
+                return `
+                    <tr>
+                        <td>${pos}</td>
+                        <td><span class="status-pill status-processing">${escapeHtml(formatMaskTypeLabel(s.mask_type))}</span></td>
+                        <td><span class="diff-raw">${escapeHtml(s.original || '')}</span></td>
+                        <td><span class="diff-masked">${escapeHtml(s.desensitized || '')}</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        if (dataSamples.length === 0) {
+            diffDataBody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">本工作表暂无数据单元格变更样本</td></tr>`;
+        } else {
+            diffDataBody.innerHTML = dataSamples.map(s => `
+                <tr>
+                    <td><code>R${s.row}C${s.col}</code></td>
+                    <td><strong>${escapeHtml(s.col_name || '')}</strong></td>
+                    <td><span class="status-pill status-processing">${escapeHtml(formatMaskTypeLabel(s.mask_type))}</span></td>
+                    <td><span class="diff-raw">${escapeHtml(s.original || '')}</span></td>
+                    <td><span class="diff-masked">${escapeHtml(s.desensitized || '')}</span></td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    async function submitHeaderOverride(sheetName, headerRowValue, clearOverride) {
+        if (!currentDiffTaskId) return;
+        const formData = new FormData();
+        formData.append('sheet_name', sheetName);
+        formData.append('clear_override', clearOverride ? 'true' : 'false');
+        if (!clearOverride) {
+            formData.append('header_row', String(headerRowValue || '1'));
+        }
+        try {
+            const resp = await fetch(`/api/tasks/${currentDiffTaskId}/reprocess`, {
+                method: 'POST',
+                body: formData,
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                alert(err.detail || '纠错重跑失败');
+                return;
+            }
+            diffModal.classList.remove('show');
+            await fetchTasks();
+            await waitAndReopenDiff(currentDiffTaskId, sheetName);
+        } catch (err) {
+            console.error('纠错重跑失败:', err);
+            alert('纠错重跑失败，请稍后重试');
+        }
+    }
+
+    async function waitAndReopenDiff(taskId, preferredSheet) {
+        const maxTries = 40;
+        for (let i = 0; i < maxTries; i++) {
+            try {
+                const resp = await fetch('/api/tasks');
+                const data = await resp.json();
+                const task = (data.tasks || []).find(t => t.task_id === taskId);
+                if (task && task.status === 'completed') {
+                    await openDiffModal(taskId);
+                    if (preferredSheet && currentDiffPayload) {
+                        renderDiffSheetPanel(currentDiffPayload, preferredSheet);
+                        const sheets = getDiffSheetList(currentDiffPayload);
+                        document.querySelectorAll('.diff-sheet-tab').forEach((btn, idx) => {
+                            btn.classList.toggle('active', sheets[idx] === preferredSheet);
+                        });
+                    }
+                    return;
+                }
+                if (task && task.status === 'failed') {
+                    alert(task.error_message || '重跑失败');
+                    return;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+            await new Promise(r => setTimeout(r, 500));
+        }
+        alert('重跑仍在进行中，请稍后在任务列表中查看并打开效果对比。');
     }
 
     function closeDiffModal() {
@@ -298,7 +520,101 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 7. 打包下载与清空
+    // 7. 最近更新（方案 A+B）
+    const whatsNewBadge = document.getElementById('whatsNewBadge');
+    const whatsNewUnreadDot = document.getElementById('whatsNewUnreadDot');
+    const whatsNewModal = document.getElementById('whatsNewModal');
+    const whatsNewTimeline = document.getElementById('whatsNewTimeline');
+    const closeWhatsNewModalBtn = document.getElementById('closeWhatsNewModalBtn');
+    const whatsNewConfirmBtn = document.getElementById('whatsNewConfirmBtn');
+    const whatsNewConfig = window.WHATS_NEW || { currentVersion: '0', storageKey: 'aimask_whats_new_read_version', releases: [] };
+
+    function compareVersion(a, b) {
+        if (!a) return -1;
+        if (!b) return 1;
+        return String(a).localeCompare(String(b));
+    }
+
+    function getReadVersion() {
+        try {
+            return localStorage.getItem(whatsNewConfig.storageKey) || '';
+        } catch (err) {
+            return '';
+        }
+    }
+
+    function isWhatsNewUnread() {
+        return compareVersion(getReadVersion(), whatsNewConfig.currentVersion) < 0;
+    }
+
+    function markWhatsNewAsRead() {
+        try {
+            localStorage.setItem(whatsNewConfig.storageKey, whatsNewConfig.currentVersion);
+        } catch (err) {
+            console.warn('无法写入已读版本:', err);
+        }
+        updateWhatsNewUnreadBadge();
+    }
+
+    function updateWhatsNewUnreadBadge() {
+        if (!whatsNewUnreadDot) return;
+        whatsNewUnreadDot.classList.toggle('show', isWhatsNewUnread());
+    }
+
+    function renderWhatsNewTimeline() {
+        if (!whatsNewTimeline) return;
+        const releases = whatsNewConfig.releases || [];
+        if (releases.length === 0) {
+            whatsNewTimeline.innerHTML = '<p style="color:#94a3b8;text-align:center;">暂无更新记录</p>';
+            return;
+        }
+        whatsNewTimeline.innerHTML = releases.map((release, index) => {
+            const isLatest = index === 0;
+            const itemsHtml = (release.items || [])
+                .map(item => `<li>${escapeHtml(item)}</li>`)
+                .join('');
+            return `
+                <article class="whats-new-release ${isLatest ? 'is-latest' : ''}">
+                    <div class="whats-new-release-header">
+                        <h4>
+                            ${escapeHtml(release.title || '更新')}
+                            ${isLatest ? '<span class="whats-new-tag">最新</span>' : ''}
+                        </h4>
+                        <span class="whats-new-date">${escapeHtml(release.date || release.version || '')}</span>
+                    </div>
+                    <ul class="whats-new-list">${itemsHtml}</ul>
+                </article>
+            `;
+        }).join('');
+    }
+
+    function openWhatsNewModal() {
+        renderWhatsNewTimeline();
+        whatsNewModal.classList.add('show');
+    }
+
+    function closeWhatsNewModal() {
+        whatsNewModal.classList.remove('show');
+    }
+
+    if (whatsNewBadge && whatsNewModal) {
+        whatsNewBadge.addEventListener('click', openWhatsNewModal);
+        closeWhatsNewModalBtn.addEventListener('click', closeWhatsNewModal);
+        whatsNewConfirmBtn.addEventListener('click', () => {
+            markWhatsNewAsRead();
+            closeWhatsNewModal();
+        });
+        whatsNewModal.addEventListener('click', (e) => {
+            if (e.target === whatsNewModal) closeWhatsNewModal();
+        });
+
+        updateWhatsNewUnreadBadge();
+        if (isWhatsNewUnread()) {
+            setTimeout(openWhatsNewModal, 600);
+        }
+    }
+
+    // 8. 打包下载与清空
     downloadAllBtn.addEventListener('click', () => {
         window.location.href = '/api/download-all';
     });
@@ -326,6 +642,46 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!text) return '';
         const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
         return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function formatStructureOptions(task) {
+        const parts = [];
+        if (task.mask_headers) parts.push('列名');
+        if (task.mask_sheet_names) parts.push('Sheet');
+        if (parts.length === 0) return '';
+        return `<span class="structure-tag" title="本次额外脱敏了：${parts.join('、')}">+ ${parts.join(' + ')}</span>`;
+    }
+
+    function formatHeaderRowsHint(task) {
+        if (task.status !== 'completed') return '';
+        const rows = task.header_rows || {};
+        const entries = Object.entries(rows);
+        if (entries.length === 0) return '';
+        if (entries.length === 1) {
+            const [sheet, row] = entries[0];
+            return `<div class="header-row-hint" title="系统识别到的表头位置">表头：${escapeHtml(sheet)} → 第 ${row} 行</div>`;
+        }
+        const preview = entries.slice(0, 2)
+            .map(([sheet, row]) => `${escapeHtml(sheet)}→第${row}行`)
+            .join('；');
+        const more = entries.length > 2 ? ` 等 ${entries.length} 个工作表` : '';
+        return `<div class="header-row-hint" title="点击「效果对比」可查看全部工作表">表头识别：${preview}${more}</div>`;
+    }
+
+    function formatMaskTypeLabel(maskType) {
+        const labels = {
+            HEADER: '列名脱敏',
+            SHEET: '工作表名称脱敏',
+            NUMBER_KEEP: '数值保留',
+            CATEGORY_KEEP: '分类保留',
+            TEXT_MIDDLE_MASK: '中间打星',
+            STRICT_ANON: '完全匿名',
+        };
+        if (!maskType) return '脱敏';
+        if (labels[maskType]) return labels[maskType];
+        if (maskType.startsWith('PII_')) return '隐私信息';
+        if (maskType.startsWith('PSEUDO_')) return '假名替换';
+        return maskType;
     }
 
     // 页面载入初始拉取一次

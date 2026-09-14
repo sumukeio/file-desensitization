@@ -31,6 +31,11 @@ class TaskItem(BaseModel):
     file_name: str
     file_size: int
     profile: DesensitizeProfile = DesensitizeProfile.AI_FRIENDLY
+    mask_headers: bool = False
+    mask_sheet_names: bool = False
+    header_row_mode: str = "auto"
+    header_row: Optional[int] = None
+    header_row_overrides: Dict[str, int] = Field(default_factory=dict)
     status: TaskStatus = TaskStatus.PENDING
     progress: int = 0
     masked_count: int = 0
@@ -39,6 +44,8 @@ class TaskItem(BaseModel):
     completed_at: Optional[float] = None
     output_filename: Optional[str] = None
     diff_samples: List[Dict[str, Any]] = Field(default_factory=list)
+    header_rows: Dict[str, int] = Field(default_factory=dict)
+    sheet_renames: Dict[str, str] = Field(default_factory=dict)
 
 
 class TaskListResponse(BaseModel):

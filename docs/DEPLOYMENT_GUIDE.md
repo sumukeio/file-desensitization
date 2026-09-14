@@ -32,11 +32,11 @@ File Desensitization/
 │   │   ├── engine/
 │   │   ├── schemas/
 │   │   └── main.py            # FastAPI 服务入口
-│   └── requirements.txt       # Python 依赖清单
 ├── frontend/                  # 前端静态页面
 │   ├── css/
 │   ├── js/
 │   └── index.html
+├── requirements.txt           # Python 依赖清单（置于根目录，宝塔自动识别）
 ├── 启动工具站.bat              # Windows 本地双击启动脚本
 ├── run.py                     # Python 跨平台启动入口
 └── pytest.ini                 # 测试配置
@@ -91,15 +91,15 @@ python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 2. 切换到 **【项目管理】** $\rightarrow$ 点击 **【添加项目】**：
    - **项目名称**：`excel-desensitizer`
    - **项目路径**：选择 `/www/wwwroot/file-desensitization`
-   - **Python 版本**：选择刚才安装的 `Python 3.10+`
-   - **框架**：选择 `FastAPI`（或选择 `自定义`）
-   - **启动方式**：`uvicorn`
-   - **启动文件/类名**：`backend.app.main:app`
-   - **端口**：`8000`（或自定义空闲端口，如 `8088`）
-   - **执行参数**：`--host 0.0.0.0 --port 8000 --workers 2`
-   - **运行用户**：`www`
+   - **Python 版本**：选择刚才安装的 `Python 3.11+`
+   - **框架**：选择 `python`
+   - **启动方式**：选择 `python`（最稳妥零报错）
+   - **启动文件**：选择 `/www/wwwroot/file-desensitization/run.py`
+   - **运行参数**：留空
+   - **运行用户**：推荐选择 **`root`**（避免因 `logs/` 或 `temp/` 目录缺少写权限导致启动失败）
    - **开机启动**：勾选 ✅
-3. 点击 **【确定】**。
+   - **守护进程**：**建议先不勾选**（除非在宝塔软件商店中已安装过【Supervisor 进程守护管理器】插件，否则勾选会报插件未安装错误）
+3. 点击 **【确定】**，宝塔将自动完成环境构建并启动服务。
 
 #### 第 4 步：安装依赖模块
 1. 在项目列表中，找到刚创建的项目，点击右侧的 **【模块】**；
@@ -213,3 +213,14 @@ echo "脱敏临时沙箱清理完成: $(date)"
 
 ### Q3: 为什么不需要配置 MySQL 数据库？
 - **设计原理**：为了践行真正的 **“零数据驻留 / 绝密安全”**，本系统采用纯内存流式排队与沙箱临时缓存设计，**完全不依赖外部数据库**，真正做到“零配置、轻量级、无泄漏风险”。
+
+### Q4: 本地打开页面只显示 `{"detail":"Not Found"}`？
+- **常见原因**：`127.0.0.1:8000` 被**其他项目的 uvicorn**（例如 `api.main:app`）或已退出仍残留的「幽灵监听」占用。本项目虽已在 `0.0.0.0:8000` 启动，但浏览器访问 localhost 会优先打到错误进程，于是只看到 FastAPI 默认 404 JSON。
+- **快速确认**：
+  1. 用局域网 IP 访问（如 `http://192.168.x.x:8000`）若正常，即可确认是本机 127.0.0.1 端口冲突；
+  2. 访问 `http://127.0.0.1:8000/api/tasks`，若不是带 `tasks` 字段的 JSON，说明打错服务了。
+- **处理办法**：
+  1. PowerShell：`netstat -ano | findstr ":8000"`，对 LISTENING 的 PID 执行 `taskkill /PID <PID> /F` 后重新启动；
+  2. 或换端口：`set AIMASK_PORT=8001` 再执行 `python run.py`；
+  3. 推荐直接使用项目根目录的 `python run.py` / `启动工具站.bat`（已内置端口占用检测与自动换端口，请以控制台打印的地址为准）。
+- **详细复盘**：见 [`.phrase/docs/ISSUES.md` → issue001](file:///e:/AIProject/File%20Desensitization/.phrase/docs/ISSUES.md)。

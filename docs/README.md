@@ -11,7 +11,12 @@
 | **工程治理总规范** | [`docs/AGENTS.md`](file:///e:/AIProject/File%20Desensitization/docs/AGENTS.md) | `[权威/现行]` | 跨 IDE/Agent 开发总守则、7大铁律、工作流与交付规范 |
 | **自动脱敏工具站方案 (Excel 专项)** | [`docs/excel_desensitization_solution.md`](file:///e:/AIProject/File%20Desensitization/docs/excel_desensitization_solution.md) | `[权威/现行]` | 面向 AI 数据安全喂送场景的完整产品设计、5层智能脱敏规则引擎、UI/UX 规范与技术架构 |
 | **内网与宝塔部署实战指南** | [`docs/DEPLOYMENT_GUIDE.md`](file:///e:/AIProject/File%20Desensitization/docs/DEPLOYMENT_GUIDE.md) | `[权威/现行]` | 本地局域网共享、宝塔面板 Python 项目管理器部署、Nginx 反代大文件配置与 Docker 容器化方案 |
-| **变更历史日志** | [`docs/CHANGELOG.md`](file:///e:/AIProject/File%20Desensitization/docs/CHANGELOG.md) | `[只追加]` | 记录项目全量历史变更明细 |
+| **变更历史日志** | [`docs/CHANGELOG.md`](file:///e:/AIProject/File%20Desensitization/docs/CHANGELOG.md) | `[只追加]` | 记录项目全量历史变更明细（开发向） |
+| **RFC001 可选列名/Sheet 脱敏** | [`docs/rfcs/RFC001.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC001.md) | `[已实施]` | 上传前勾选是否对列名、工作表名称脱敏；默认不处理 |
+| **RFC002 用户可见最近更新** | [`docs/rfcs/RFC002.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC002.md) | `[已实施]` | 顶栏「最近更新」+ 新版本自动提示一次（方案 A+B），文案通俗易懂 |
+| **RFC003 智能识别表头所在行** | [`docs/rfcs/RFC003.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC003.md) | `[已实施]` | 自动识别真正表头所在行，并允许用户手动指定 |
+| **RFC004 效果对比分 Sheet 切换** | [`docs/rfcs/RFC004.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC004.md) | `[已实施]` | 按工作表 Tab 查看抽样对比；列名 / Sheet 名脱敏在对比中可见 |
+| **RFC005 按 Sheet 纠错表头行** | [`docs/rfcs/RFC005.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC005.md) | `[已实施]` | 默认自动识别；仅对识别错的工作表在效果对比里改行号并重跑 |
 
 ---
 
@@ -20,3 +25,9 @@
 - **想了解前端界面排版与任务排队交互？** $\rightarrow$ 请阅读 [`docs/excel_desensitization_solution.md`](file:///e:/AIProject/File%20Desensitization/docs/excel_desensitization_solution.md) 第三、四章。
 - **想了解系统技术选型与多格式扩展机制？** $\rightarrow$ 请阅读 [`docs/excel_desensitization_solution.md`](file:///e:/AIProject/File%20Desensitization/docs/excel_desensitization_solution.md) 第五章。
 - **想了解开发准则与 AI 行为铁律？** $\rightarrow$ 请阅读 [`docs/AGENTS.md`](file:///e:/AIProject/File%20Desensitization/docs/AGENTS.md)。
+- **想了解「列名/工作表可选脱敏」已锁定方案？** $\rightarrow$ 请阅读 [`docs/rfcs/RFC001.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC001.md)。
+- **想了解「最近更新」入口怎么做？** $\rightarrow$ 请阅读 [`docs/rfcs/RFC002.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC002.md)。
+- **想了解“表头不一定在第一行”怎么处理？** $\rightarrow$ 请阅读 [`docs/rfcs/RFC003.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC003.md)。
+- **想了解「效果对比」如何按 Sheet 切换、看到列名/Sheet 名脱敏？** $\rightarrow$ 请阅读 [`docs/rfcs/RFC004.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC004.md)。
+- **想了解表头识别错了如何只改某一个工作表？** $\rightarrow$ 请阅读 [`docs/rfcs/RFC005.md`](file:///e:/AIProject/File%20Desensitization/docs/rfcs/RFC005.md)。
+- **想看当前研发阶段与 task 清单？** $\rightarrow$ 请阅读 [`.phrase/docs/CHANGE.md`](file:///e:/AIProject/File%20Desensitization/.phrase/docs/CHANGE.md)。

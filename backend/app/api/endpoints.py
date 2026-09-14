@@ -1,7 +1,8 @@
 import io
+import json
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import List, Union
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 
@@ -12,16 +13,62 @@ from backend.app.schemas.task import TaskItem, TaskListResponse, DesensitizeProf
 router = APIRouter(prefix="/api")
 
 
+def _parse_bool_form(value: Union[str, bool, None]) -> bool:
+    """兼容 multipart 表单传来的 true/false/on/1 等布尔写法。"""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_header_overrides(raw: str) -> dict:
+    """解析可选的 header_row_overrides JSON：{"Sheet名": 行号}。"""
+    if not raw or not str(raw).strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="header_row_overrides 必须是合法 JSON")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="header_row_overrides 必须是对象")
+    parsed = {}
+    for k, v in data.items():
+        try:
+            parsed[str(k)] = max(1, int(v))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"工作表「{k}」的表头行号无效")
+    return parsed
+
+
 @router.post("/upload", response_model=List[TaskItem])
 async def upload_files(
     files: List[UploadFile] = File(...),
     profile: str = Form("ai_friendly"),
+    mask_headers: str = Form("false"),
+    mask_sheet_names: str = Form("false"),
+    header_row_mode: str = Form("auto"),
+    header_row: str = Form(""),
+    header_row_overrides: str = Form(""),
 ):
     """接收批量文件上传并压入脱敏队列"""
     try:
         prof_enum = DesensitizeProfile(profile)
     except ValueError:
         prof_enum = DesensitizeProfile.AI_FRIENDLY
+
+    do_mask_headers = _parse_bool_form(mask_headers)
+    do_mask_sheet_names = _parse_bool_form(mask_sheet_names)
+    mode = (header_row_mode or "auto").strip().lower()
+    if mode not in {"auto", "manual"}:
+        mode = "auto"
+    parsed_header_row = None
+    if mode == "manual" and header_row.strip():
+        try:
+            parsed_header_row = max(1, int(header_row.strip()))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="表头行号必须是大于 0 的整数")
+    overrides = _parse_header_overrides(header_row_overrides)
 
     created_tasks = []
     for file in files:
@@ -34,6 +81,11 @@ async def upload_files(
             file_name=file.filename,
             file_bytes=file_bytes,
             profile=prof_enum,
+            mask_headers=do_mask_headers,
+            mask_sheet_names=do_mask_sheet_names,
+            header_row_mode=mode,
+            header_row=parsed_header_row,
+            header_row_overrides=overrides,
         )
         created_tasks.append(task_item)
 
@@ -62,7 +114,40 @@ async def get_task_diff(task_id: str):
         "status": task.status,
         "masked_count": task.masked_count,
         "diff_samples": task.diff_samples,
+        "header_rows": task.header_rows,
+        "sheet_renames": task.sheet_renames,
+        "header_row_mode": task.header_row_mode,
+        "header_row": task.header_row,
+        "header_row_overrides": task.header_row_overrides,
     }
+
+
+@router.post("/tasks/{task_id}/reprocess", response_model=TaskItem)
+async def reprocess_task(
+    task_id: str,
+    sheet_name: str = Form(...),
+    header_row: str = Form(""),
+    clear_override: str = Form("false"),
+):
+    """按 Sheet 纠错表头行后，复用原上传文件重新脱敏。"""
+    do_clear = _parse_bool_form(clear_override)
+    parsed_row = None
+    if not do_clear:
+        if not str(header_row).strip():
+            raise HTTPException(status_code=400, detail="请填写表头行号，或选择恢复自动识别")
+        try:
+            parsed_row = max(1, int(str(header_row).strip()))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="表头行号必须是大于 0 的整数")
+    try:
+        return await task_queue_manager.reprocess_with_header_override(
+            task_id=task_id,
+            sheet_name=sheet_name.strip(),
+            header_row=parsed_row,
+            clear_override=do_clear,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/tasks/{task_id}/download")

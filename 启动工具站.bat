@@ -7,13 +7,22 @@ echo =======================================================
 echo          🛡️ AI-Mask 智能文件脱敏站 启动中...
 echo =======================================================
 echo.
-echo 正在启动后端引擎与 Web 控制台 (http://127.0.0.1:8000)...
+echo 将自动检测端口占用；若 8000 被其他服务抢走，
+echo 会改用空闲端口，并在下方打印真实访问地址。
+echo.
+echo 说明：若浏览器出现 {"detail":"Not Found"}，
+echo 多半是 127.0.0.1:8000 被别的进程/幽灵端口占用，
+echo 请看控制台打印的实际端口，或运行 python run.py。
 echo.
 
-:: 延时 2 秒后自动打开默认浏览器
-start "" cmd /c "timeout /t 2 /nobreak >nul && start http://127.0.0.1:8000"
-
-:: 启动 uvicorn 服务
-python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+:: 推荐走 run.py（含端口冲突检测与自动换端口）
+python run.py
+if errorlevel 1 (
+  echo.
+  echo 启动失败。也可手动指定端口，例如：
+  echo   set AIMASK_PORT=8001
+  echo   python run.py
+  echo.
+)
 
 pause
